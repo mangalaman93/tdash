@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/luabagg/orcgen/v2"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -19,6 +20,9 @@ const (
 	jaipurSouthEastLatitude  = 26.78
 	jaipurNorthWestLongitude = 75.65
 	jaipurSouthEastLongitude = 75.92
+
+	maxRoutine      = 10
+	metersPerDegree = 111320
 
 	//
 	//	26.99 ------------
@@ -63,7 +67,8 @@ func takeScreenshotsForJaipur() {
 }
 
 func takeGridScreenshots() error {
-	log.Printf("---- taking screenshots for Jaipur at %v ----\n", getCurTime())
+	nowStr := time.Now().Format("20060102-150405")
+	log.Printf("---- taking screenshots for Jaipur at %v ----\n", nowStr)
 	defer log.Println("---- screenshots taken ----")
 
 	// latitude is vertical => y, longitude is horizontal => x
@@ -71,12 +76,19 @@ func takeGridScreenshots() error {
 	lat := addMetersInLatitude(jaipurNorthWestLatitude, metersInImageHeight/2)
 	long := addMetersInLongitude(lat, jaipurNorthWestLongitude, metersInImageWidth/2)
 
+	var g errgroup.Group
+	g.SetLimit(maxRoutine)
+
 loop:
 	for {
 		for {
-			if err := takeScreenshot(lat, long, x, y); err != nil {
-				return fmt.Errorf("error in taking screenshot: %w", err)
-			}
+			latTemp := lat
+			longTemp := long
+			xTemp := x
+			yTemp := y
+			g.Go(func() error {
+				return takeScreenshot(latTemp, longTemp, xTemp, yTemp, nowStr)
+			})
 
 			x += 1
 			long = addMetersInLongitude(lat, long, metersInImageWidth)
@@ -92,10 +104,14 @@ loop:
 		}
 	}
 
+	if err := g.Wait(); err != nil {
+		return fmt.Errorf("error in taking screenshot: %w", err)
+	}
+
 	return nil
 }
 
-func takeScreenshot(latitude, longitude float64, x, y int) error {
+func takeScreenshot(latitude, longitude float64, x, y int, nowStr string) error {
 	mapsURL := fmt.Sprintf(mapsURLForYadgaar, latitude, longitude)
 	log.Printf("taking screenshot for [y:%v, x:%v] latitude: %f, longitude: %f at [%v]\n",
 		y, x, latitude, longitude, mapsURL)
@@ -116,7 +132,7 @@ func takeScreenshot(latitude, longitude float64, x, y int) error {
 		return fmt.Errorf("error while loading the webpage: %w", err)
 	}
 
-	fileName := fmt.Sprintf(fileNameFmt, screenshotFolder, getCurTime(), x, y)
+	fileName := fmt.Sprintf(fileNameFmt, screenshotFolder, nowStr, x, y)
 	if err := os.WriteFile(fileName, pngPass.File, 0644); err != nil {
 		return fmt.Errorf("error while writing the screenshot file: %w", err)
 	}
@@ -125,15 +141,9 @@ func takeScreenshot(latitude, longitude float64, x, y int) error {
 }
 
 func addMetersInLatitude(latitude float64, meter int) float64 {
-	const metersPerDegree = 111320.0
 	return latitude - float64(meter)/metersPerDegree
 }
 
 func addMetersInLongitude(latitude, longitude float64, meter int) float64 {
-	const metersPerDegree = 111320.0
 	return longitude + float64(meter)/(metersPerDegree*math.Cos(latitude*math.Pi/180))
-}
-
-func getCurTime() string {
-	return time.Now().Format("20060102-150405")
 }

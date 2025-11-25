@@ -2,7 +2,10 @@ module github.com/mangalaman93/tdash
 
 go 1.25.3
 
-require github.com/luabagg/orcgen/v2 v2.0.2
+require (
+	github.com/luabagg/orcgen/v2 v2.0.2
+	golang.org/x/sync v0.18.0
+)
 
 require (
 	github.com/go-rod/rod v0.116.2 // indirect
