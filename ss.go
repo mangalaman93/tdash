@@ -5,7 +5,6 @@ import (
 	"log"
 	"math"
 	"os"
-	"os/signal"
 	"time"
 
 	"github.com/luabagg/orcgen/v2"
@@ -13,9 +12,21 @@ import (
 )
 
 const (
-	fileNameFmt  = "%v/%v-x%v-y%v.png"
-	ssTimePeriod = 10 * time.Minute
+	mapsURLForTraffic = "https://www.google.com/maps/@%7f,%7f,1200m/data=!3m1!1e3!5m1!1e1"
+	ssHeightMeters    = 1100
+	ssWidthMeters     = 1800
 
+	/*
+		26.99 ------------
+		  |
+		  |    LATITUDE (y)
+		  |
+		26.78 ------------
+
+		  |                   |
+		75.65 LONGITUDE (x) 75.92
+		  |                   |
+	*/
 	jaipurNorthWestLatitude  = 26.99
 	jaipurSouthEastLatitude  = 26.78
 	jaipurNorthWestLongitude = 75.65
@@ -23,65 +34,37 @@ const (
 
 	maxRoutine      = 10
 	metersPerDegree = 111320
-
-	//
-	//	26.99 ------------
-	//	  |
-	//	  |    LATITUDE (y)
-	//	  |
-	//	26.78 ------------
-	//
-	//	  |                   |
-	//	75.65 LONGITUDE (x) 75.92
-	//	  |                   |
-	//
+	fileNameFmt     = "%v/%v-x%v-y%v.png"
+	combFileNameFmt = "%v/%v.png"
 )
 
-func takeScreenshotsForJaipur() {
-	// Register signal handler
-	ctrlC := make(chan os.Signal, 1)
-	signal.Notify(ctrlC, os.Interrupt)
-	defer signal.Stop(ctrlC)
-
-	t := time.NewTicker(ssTimePeriod)
-	defer t.Stop()
-	for {
-		select {
-		case <-t.C:
-			// no screenshot during 23:30 to 6:30 IST, that is 18 to 1 UTC
-			if time.Now().UTC().Hour() >= 18 || time.Now().UTC().Hour() <= 0 {
-				log.Println("skipping screenshot during 23:30 to 6:30 IST")
-				continue
-			}
-
-			// Take screenshot for Yadgaar junction
-			if err := takeGridScreenshots(); err != nil {
-				log.Println(err)
-			}
-
-		case <-ctrlC:
-			log.Println("shutting down...")
-			return
-		}
-	}
-}
-
-func takeGridScreenshots() error {
+func takeGridScreenshots(ctrlC <-chan os.Signal) (string, error) {
 	nowStr := time.Now().Format("20060102-150405")
-	log.Printf("---- taking screenshots for Jaipur at %v ----\n", nowStr)
+	log.Printf("---- taking screenshots for Jaipur at %v ----", nowStr)
 	defer log.Println("---- screenshots taken ----")
 
 	// latitude is vertical => y, longitude is horizontal => x
 	var x, y int
-	lat := addMetersInLatitude(jaipurNorthWestLatitude, metersInImageHeight/2)
-	long := addMetersInLongitude(lat, jaipurNorthWestLongitude, metersInImageWidth/2)
+	lat := addMetersInLatitude(jaipurNorthWestLatitude, ssHeightMeters/2)
+	long := addMetersInLongitude(lat, jaipurNorthWestLongitude, ssWidthMeters/2)
 
 	var g errgroup.Group
 	g.SetLimit(maxRoutine)
+	defer func() {
+		if err := g.Wait(); err != nil {
+			log.Printf("error in taking screenshot: %v", err)
+		}
+	}()
 
 loop:
 	for {
 		for {
+			select {
+			case <-ctrlC:
+				return "", fmt.Errorf("ctrl+c pressed")
+			default:
+			}
+
 			latTemp := lat
 			longTemp := long
 			xTemp := x
@@ -91,12 +74,12 @@ loop:
 			})
 
 			x += 1
-			long = addMetersInLongitude(lat, long, metersInImageWidth)
+			long = addMetersInLongitude(lat, long, ssWidthMeters)
 			if long > jaipurSouthEastLongitude {
 				y += 1
 				x = 0
-				lat = addMetersInLatitude(lat, metersInImageHeight)
-				long = addMetersInLongitude(lat, jaipurNorthWestLongitude, metersInImageWidth/2)
+				lat = addMetersInLatitude(lat, ssHeightMeters)
+				long = addMetersInLongitude(lat, jaipurNorthWestLongitude, ssWidthMeters/2)
 			}
 			if lat < jaipurSouthEastLatitude {
 				break loop
@@ -104,27 +87,19 @@ loop:
 		}
 	}
 
-	if err := g.Wait(); err != nil {
-		return fmt.Errorf("error in taking screenshot: %w", err)
-	}
-
-	return nil
+	return nowStr, nil
 }
 
 func takeScreenshot(latitude, longitude float64, x, y int, nowStr string) error {
-	mapsURL := fmt.Sprintf(mapsURLForYadgaar, latitude, longitude)
-	log.Printf("taking screenshot for [y:%v, x:%v] latitude: %f, longitude: %f at [%v]\n",
+	mapsURL := fmt.Sprintf(mapsURLForTraffic, latitude, longitude)
+	log.Printf("taking screenshot for [y:%v, x:%v] latitude: %f, longitude: %f at [%v]",
 		y, x, latitude, longitude, mapsURL)
 
 	defer func() {
 		if r := recover(); r != nil {
-			log.Printf("error: recovered panic: %v\n", r)
+			log.Printf("error: recovered panic: %v", r)
 		}
 	}()
-
-	if dryRun {
-		return nil
-	}
 
 	h := orcgen.NewHandler(orcgen.ScreenshotConfig{FromSurface: true})
 	pngPass, err := orcgen.ConvertWebpage(h, mapsURL)
@@ -132,7 +107,7 @@ func takeScreenshot(latitude, longitude float64, x, y int, nowStr string) error 
 		return fmt.Errorf("error while loading the webpage: %w", err)
 	}
 
-	fileName := fmt.Sprintf(fileNameFmt, screenshotFolder, nowStr, x, y)
+	fileName := fmt.Sprintf(fileNameFmt, ssFolder, nowStr, x, y)
 	if err := os.WriteFile(fileName, pngPass.File, 0644); err != nil {
 		return fmt.Errorf("error while writing the screenshot file: %w", err)
 	}

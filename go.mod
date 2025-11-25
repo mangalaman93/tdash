@@ -4,6 +4,8 @@ go 1.25.3
 
 require (
 	github.com/luabagg/orcgen/v2 v2.0.2
+	github.com/mattn/go-sqlite3 v1.14.32
+	golang.org/x/image v0.33.0
 	golang.org/x/sync v0.18.0
 )
 

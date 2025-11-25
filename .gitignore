@@ -1,7 +1,13 @@
 .DS_Store
 
 # Data
-tdash
 mask
 ss
-ss-yadgaar
+ss-comb
+mask-comb
+
+# DB
+db
+
+# Binaries
+tdash
