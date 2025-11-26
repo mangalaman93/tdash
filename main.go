@@ -9,10 +9,12 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
+	"golang.org/x/sys/unix"
 )
 
 const (
@@ -21,6 +23,7 @@ const (
 	dbFolder       = "db"
 	ssCombFolder   = "ss-comb"
 	maskCombFolder = "mask-comb"
+	tmpRodFolder   = "/tmp/rod"
 
 	dbFile          = "traffic.db"
 	trafficTableDDL = `CREATE TABLE IF NOT EXISTS traffic(ss_path VARCHAR PRIMARY KEY, yellow INTEGER, red INTEGER, dark_red INTEGER)`
@@ -103,6 +106,10 @@ func takePeriodicScreenshots(ctrlC <-chan os.Signal) {
 	defer t.Stop()
 	for {
 		select {
+		case <-ctrlC:
+			log.Println("shutting down...")
+			return
+
 		case <-t.C:
 			// no screenshot during 23:30 to 6:30 IST, that is 18 to 1 UTC
 			if time.Now().UTC().Hour() >= 18 || time.Now().UTC().Hour() <= 0 {
@@ -110,10 +117,15 @@ func takePeriodicScreenshots(ctrlC <-chan os.Signal) {
 				continue
 			}
 
+			if err := makeSpaceIfNeeded(); err != nil {
+				log.Println(err)
+				continue
+			}
+
 			prefix, err := takeGridScreenshots(ctrlC)
 			if err != nil {
 				log.Println(err)
-				continue
+				return // because this means ctrl+c is pressed
 			}
 
 			if err := analyzeScreenshots(prefix); err != nil {
@@ -125,10 +137,6 @@ func takePeriodicScreenshots(ctrlC <-chan os.Signal) {
 				log.Println(err)
 				continue
 			}
-
-		case <-ctrlC:
-			log.Println("shutting down...")
-			return
 		}
 	}
 }
@@ -161,4 +169,54 @@ func deleteScreenshots(prefix string) error {
 		}
 		return nil
 	})
+}
+
+func cleanupTmpRod() error {
+	return os.RemoveAll(tmpRodFolder)
+}
+
+func makeSpaceIfNeeded() error {
+	if err := cleanupTmpRod(); err != nil {
+		log.Printf("error in cleaning up tmp rod: %v", err)
+	}
+
+	var stat unix.Statfs_t
+	if err := unix.Statfs(ssCombFolder, &stat); err != nil {
+		return fmt.Errorf("error in getting disk stats for [%v]: %w", ssCombFolder, err)
+	}
+
+	availableSpace := uint64(stat.Bavail) * uint64(stat.Bsize) / 1024 / 1024 / 1024
+	log.Printf("available space: %vGB", availableSpace)
+	if availableSpace > 5 {
+		return nil
+	}
+
+	entries, err := os.ReadDir(ssCombFolder)
+	if err != nil {
+		return fmt.Errorf("failed to read directory: %w", err)
+	}
+
+	var filenames []string
+	for _, entry := range entries {
+		if !strings.Contains(entry.Name(), ".png") {
+			continue
+		}
+		filenames = append(filenames, entry.Name())
+	}
+
+	if len(filenames) == 0 {
+		return nil
+	}
+
+	sort.Strings(filenames)
+
+	fileToDelete := filenames[0]
+	log.Printf("deleting screenshots from folders [%v, %v]: [%v]", ssCombFolder, maskCombFolder, fileToDelete)
+	if err := os.Remove(filepath.Join(ssCombFolder, fileToDelete)); err != nil {
+		return fmt.Errorf("failed to delete file %s: %w", fileToDelete, err)
+	}
+	if err := os.Remove(filepath.Join(maskCombFolder, fileToDelete)); err != nil {
+		return fmt.Errorf("failed to delete file %s: %w", fileToDelete, err)
+	}
+	return nil
 }
