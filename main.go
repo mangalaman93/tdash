@@ -18,23 +18,40 @@ import (
 )
 
 const (
+	tmpRodFolder    = "/tmp/rod"
+	dbFile          = "traffic.db"
+	ssTimePeriod    = 10 * time.Minute
+	trafficTableDDL = `CREATE TABLE IF NOT EXISTS traffic(ss_path VARCHAR PRIMARY KEY, yellow INTEGER, red INTEGER, dark_red INTEGER)`
+)
+
+var (
 	ssFolder       = "ss"
 	maskFolder     = "mask"
 	dbFolder       = "db"
 	ssCombFolder   = "ss-comb"
 	maskCombFolder = "mask-comb"
-	tmpRodFolder   = "/tmp/rod"
-
-	dbFile          = "traffic.db"
-	trafficTableDDL = `CREATE TABLE IF NOT EXISTS traffic(ss_path VARCHAR PRIMARY KEY, yellow INTEGER, red INTEGER, dark_red INTEGER)`
-
-	ssTimePeriod = 10 * time.Minute
+	isolateFolder  = "ss-iso"
 )
 
 func main() {
+	ssFolderVar := flag.String("ss-folder", "", "directory storing temp screenshots")
+	maskFolderVar := flag.String("mask-folder", "", "directory storing temp masks")
+	dbFolderVar := flag.String("db-folder", "", "directory storing db files")
+	ssCombFolderVar := flag.String("ss-comb-folder", "", "directory storing combined screenshots")
+	maskCombFolderVar := flag.String("mask-comb-folder", "", "directory storing combined masks")
+	isolateFolderVar := flag.String("isolate-folder", "", "directory storing isolated grids")
+
 	ss := flag.Bool("ss", false, "take screenshots once and analyze")
 	analyzePrefix := flag.String("analyze", "", "analyze existing screenshots with prefix")
+	isolate := flag.String("isolate", "", "isolate a particular grid from the map e.g. 0,0")
 	flag.Parse()
+
+	ssFolder = getNonEmpty(*ssFolderVar, ssFolder)
+	maskFolder = getNonEmpty(*maskFolderVar, maskFolder)
+	dbFolder = getNonEmpty(*dbFolderVar, dbFolder)
+	ssCombFolder = getNonEmpty(*ssCombFolderVar, ssCombFolder)
+	maskCombFolder = getNonEmpty(*maskCombFolderVar, maskCombFolder)
+	isolateFolder = getNonEmpty(*isolateFolderVar, isolateFolder)
 
 	if err := createFolders(); err != nil {
 		panic(err)
@@ -63,9 +80,21 @@ func main() {
 			panic(err)
 		}
 
+	case *isolate != "":
+		if err := isolateGrid(isolateFolder, *isolate); err != nil {
+			panic(err)
+		}
+
 	default:
 		takePeriodicScreenshots(ctrlC)
 	}
+}
+
+func getNonEmpty(val, defaultVal string) string {
+	if val != "" {
+		return val
+	}
+	return defaultVal
 }
 
 func createFolders() error {
@@ -83,6 +112,9 @@ func createFolders() error {
 	}
 	if err := os.MkdirAll(maskCombFolder, 0755); err != nil {
 		return fmt.Errorf("error in creating mask comb folder [%v]: %w", maskCombFolder, err)
+	}
+	if err := os.MkdirAll(isolateFolder, 0755); err != nil {
+		return fmt.Errorf("error in creating isolate folder [%v]: %w", isolateFolder, err)
 	}
 	return nil
 }
