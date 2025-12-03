@@ -5,9 +5,13 @@ mask
 ss
 ss-comb
 mask-comb
+ss-iso
 
 # DB
 db
 
 # Binaries
 tdash
+
+# logs
+tdash.logs

@@ -81,7 +81,7 @@ func main() {
 		}
 
 	case *isolate != "":
-		if err := isolateGrid(isolateFolder, *isolate); err != nil {
+		if err := isolateGrid(isolateFolder, *isolate, ctrlC); err != nil {
 			panic(err)
 		}
 

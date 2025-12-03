@@ -16,6 +16,7 @@ import (
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/basicfont"
 	"golang.org/x/image/math/fixed"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -113,7 +114,7 @@ func addCoordinatesToImage(img *image.RGBA, x, y int) {
 	d.DrawString(fmt.Sprintf("%v, %v", y, x))
 }
 
-func isolateGrid(dstFolder, grid string) error {
+func isolateGrid(dstFolder, grid string, ctrlC <-chan os.Signal) error {
 	gridParts := strings.Split(grid, ",")
 	if len(gridParts) != 2 {
 		return fmt.Errorf("invalid grid format: [%s]", grid)
@@ -128,6 +129,7 @@ func isolateGrid(dstFolder, grid string) error {
 	}
 
 	files := []string{}
+	log.Printf("isolating screenshots for grid [%v, %v]", x, y)
 	if err := filepath.WalkDir(ssCombFolder, func(ssCombPath string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return fmt.Errorf("error in walking dir [%v]: %w", ssCombFolder, err)
@@ -151,20 +153,35 @@ func isolateGrid(dstFolder, grid string) error {
 		return fmt.Errorf("error in walking dir for analyzing screenshots [%v]: %w", ssFolder, err)
 	}
 
-	log.Printf("found %d files for grid %s", len(files), grid)
-	for _, file := range files {
-		log.Printf("processing file: %s", file)
-		if err := isolateGridFromCombinedImg(dstFolder, file, x, y); err != nil {
-			log.Printf("error processing file %s: %v", file, err)
-			continue
+	var g errgroup.Group
+	g.SetLimit(6)
+	defer func() {
+		if err := g.Wait(); err != nil {
+			log.Printf("error in isolating grid [%v, %v]: %v", x, y, err)
 		}
+	}()
+
+	log.Printf("found %d files for grid [%v, %v]", len(files), x, y)
+	for _, file := range files {
+		select {
+		case <-ctrlC:
+			log.Println("shutting down...")
+			return nil
+		default:
+		}
+
+		g.Go(func() error {
+			return isolateGridFromCombinedImg(dstFolder, file, x, y)
+		})
 	}
 
-	log.Printf("completed processing %d files for grid %s\n", len(files), grid)
+	log.Printf("completed processing %d files for grid [%v, %v]\n", len(files), x, y)
 	return nil
 }
 
 func isolateGridFromCombinedImg(dstFolder, combinedImgPath string, x, y int) error {
+	log.Printf("processing file: %s", combinedImgPath)
+
 	combinedImg, err := readImage(combinedImgPath)
 	if err != nil {
 		return fmt.Errorf("error reading combined image [%v]: %w", combinedImgPath, err)
@@ -174,7 +191,7 @@ func isolateGridFromCombinedImg(dstFolder, combinedImgPath string, x, y int) err
 	rect := image.Rect(0, 0, imageWidthWithLeaveOuts, imageHeightWithLeaveOuts)
 	draw.Draw(isolatedImg, rect, combinedImg, image.Point{x * imageWidthWithLeaveOuts, y * imageHeightWithLeaveOuts}, draw.Over)
 
-	outputPath := filepath.Join(dstFolder, fmt.Sprintf("isolated_grid_%d_%d.png", x, y))
+	outputPath := filepath.Join(dstFolder, filepath.Base(combinedImgPath))
 	file, err := os.Create(outputPath)
 	if err != nil {
 		return fmt.Errorf("error creating output file [%v]: %w", outputPath, err)
