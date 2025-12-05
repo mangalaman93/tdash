@@ -25,6 +25,46 @@ const (
 )
 
 var (
+	migrations = []string{
+		"ALTER TABLE traffic ADD COLUMN ts TEXT;",
+		"ALTER TABLE traffic ADD COLUMN x INTEGER;",
+		"ALTER TABLE traffic ADD COLUMN y INTEGER;",
+		`CREATE TRIGGER trg_parse_ss_path
+			AFTER INSERT ON traffic
+			FOR EACH ROW
+			BEGIN
+				UPDATE traffic
+				SET
+					ts =
+						SUBSTR(NEW.ss_path, 1, 4) || '-' ||
+						SUBSTR(NEW.ss_path, 5, 2) || '-' ||
+						SUBSTR(NEW.ss_path, 7, 2) || ' ' ||
+						SUBSTR(NEW.ss_path, 10, 2) || ':' ||
+						SUBSTR(NEW.ss_path, 12, 2) || ':' ||
+						SUBSTR(NEW.ss_path, 14, 2),
+
+					x = CAST(
+							SUBSTR(
+								NEW.ss_path,
+								INSTR(NEW.ss_path, '-x') + 2,
+								INSTR(NEW.ss_path, '-y') - (INSTR(NEW.ss_path, '-x') + 2)
+							) AS INTEGER
+						),
+
+					y = CAST(
+							SUBSTR(
+								NEW.ss_path,
+								INSTR(NEW.ss_path, '-y') + 2,
+								INSTR(NEW.ss_path, '.png') - (INSTR(NEW.ss_path, '-y') + 2)
+							) AS INTEGER
+						)
+
+				WHERE ss_path = NEW.ss_path;
+			END;`,
+	}
+)
+
+var (
 	ssFolder       = "ss"
 	maskFolder     = "mask"
 	dbFolder       = "db"
@@ -130,6 +170,21 @@ func initDB() error {
 		return fmt.Errorf("error in creating table [traffic]: %w", err)
 	}
 
+	if err := migrateDB(db); err != nil {
+		return fmt.Errorf("error in migrating db: %w", err)
+	}
+
+	return nil
+}
+
+func migrateDB(db *sql.DB) error {
+	for _, migration := range migrations {
+		if _, err := db.Exec(migration); err != nil && !strings.Contains(err.Error(), "duplicate") &&
+			!strings.Contains(err.Error(), "already exists") {
+
+			return fmt.Errorf("error in migrating db: %w", err)
+		}
+	}
 	return nil
 }
 
