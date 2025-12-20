@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/sys/unix"
@@ -89,7 +90,7 @@ func main() {
 		}
 
 	default:
-		takePeriodicScreenshots(ctrlC, db)
+		runPeriodicSync(ctrlC, db)
 	}
 }
 
@@ -122,13 +123,30 @@ func createFolders() error {
 	return nil
 }
 
-func takePeriodicScreenshots(ctrlC <-chan os.Signal, db *sql.DB) {
+func runPeriodicSync(ctrlC <-chan os.Signal, db *sql.DB) {
+	hint := make(chan struct{}, 10)
+	quit := make(chan os.Signal, 10)
+	hint <- struct{}{}
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go periodicSyncToPG(db, hint, quit, &wg)
+	go takePeriodicScreenshots(db, hint, quit, &wg)
+
+	<-ctrlC
+	close(quit)
+	wg.Wait()
+}
+
+func takePeriodicScreenshots(db *sql.DB, hint chan struct{}, quit <-chan os.Signal, wg *sync.WaitGroup) {
+	defer wg.Done()
+
 	t := time.NewTicker(ssTimePeriod)
 	defer t.Stop()
 	for {
 		select {
-		case <-ctrlC:
-			log.Println("shutting down...")
+		case <-quit:
+			log.Println("shutting down screenshot thread!")
 			return
 
 		case <-t.C:
@@ -143,7 +161,7 @@ func takePeriodicScreenshots(ctrlC <-chan os.Signal, db *sql.DB) {
 				continue
 			}
 
-			prefix, err := takeGridScreenshots(ctrlC)
+			prefix, err := takeGridScreenshots(quit)
 			if err != nil {
 				log.Println(err)
 				return // because this means ctrl+c is pressed
@@ -158,6 +176,8 @@ func takePeriodicScreenshots(ctrlC <-chan os.Signal, db *sql.DB) {
 				log.Println(err)
 				continue
 			}
+
+			hint <- struct{}{}
 		}
 	}
 }

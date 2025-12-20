@@ -38,7 +38,7 @@ const (
 	combFileNameFmt = "%v/%v.png"
 )
 
-func takeGridScreenshots(ctrlC <-chan os.Signal) (string, error) {
+func takeGridScreenshots(quit <-chan os.Signal) (string, error) {
 	nowStr := time.Now().Format("20060102-150405")
 	log.Printf("---- taking screenshots for Jaipur at %v ----", nowStr)
 	defer log.Println("---- screenshots taken ----")
@@ -60,7 +60,7 @@ loop:
 	for {
 		for {
 			select {
-			case <-ctrlC:
+			case <-quit:
 				return "", fmt.Errorf("ctrl+c pressed")
 			default:
 			}

@@ -15,6 +15,7 @@ const (
 
 	trafficTableDDL  = `CREATE TABLE IF NOT EXISTS traffic(ss_path VARCHAR PRIMARY KEY, yellow INTEGER, red INTEGER, dark_red INTEGER)`
 	insertTrafficSQL = `INSERT OR REPLACE INTO traffic(ss_path, yellow, red, dark_red) VALUES(?, ?, ?, ?)`
+	recentTrafficSQL = `SELECT * FROM traffic WHERE ts > ? ORDER BY ts ASC`
 )
 
 var (
@@ -98,4 +99,8 @@ func openDB() (*sql.DB, func(), error) {
 func insertTraffic(db *sql.DB, ssPath string, yellow, red, darkRed int) error {
 	_, err := db.Exec(insertTrafficSQL, filepath.Base(ssPath), yellow, red, darkRed)
 	return err
+}
+
+func getRecentTraffic(db *sql.DB, ts string) (*sql.Rows, error) {
+	return db.Query(recentTrafficSQL, ts)
 }
