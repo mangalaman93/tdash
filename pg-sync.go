@@ -14,7 +14,6 @@ import (
 )
 
 const (
-	maxRowsForSync = 100
 	requestTimeout = time.Minute
 
 	createTablePGDDL = `CREATE TABLE IF NOT EXISTS traffic(ss_path TEXT PRIMARY KEY,
@@ -42,15 +41,16 @@ func periodicSyncToPG(db *sql.DB, hint chan struct{}, quit <-chan os.Signal, wg 
 			return nil
 
 		case <-hint:
-			log.Println("syncing to PG!")
-			if err := syncLatestSqliteToPG(pgpool, db, quit); err != nil {
+			if err := syncLatestSqliteToPG(pgpool, db, hint, quit); err != nil {
 				log.Printf("error while syncing sqlite DB to postgres; %v", err)
 			}
 		}
 	}
 }
 
-func syncLatestSqliteToPG(pgpool *pgxpool.Pool, db *sql.DB, quit <-chan os.Signal) error {
+func syncLatestSqliteToPG(pgpool *pgxpool.Pool, db *sql.DB,
+	hint chan struct{}, quit <-chan os.Signal) error {
+
 	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
 	defer cancel()
 
@@ -108,28 +108,16 @@ loop:
 		}
 
 		rowsCount++
-		if rowsCount < maxRowsForSync {
-			continue
-		}
-
-		ctx, cancel = context.WithTimeout(context.Background(), requestTimeout)
-		defer cancel()
-
-		if err := tx.Commit(ctx); err != nil {
-			return fmt.Errorf("error committing pg transaction: %w", err)
-		}
-
-		tx, err = pgpool.Begin(ctx)
-		if err != nil {
-			return fmt.Errorf("error starting pg transaction: %w", err)
-		}
-
-		log.Printf("synced [%v] rows to postgres", rowsCount)
-		rowsCount = 0
 	}
 
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("error committing pg transaction: %w", err)
 	}
+
+	if rowsCount == 100 {
+		hint <- struct{}{}
+	}
+
+	log.Printf("synced [%v] rows to postgres", rowsCount)
 	return nil
 }

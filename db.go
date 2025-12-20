@@ -15,7 +15,7 @@ const (
 
 	trafficTableDDL  = `CREATE TABLE IF NOT EXISTS traffic(ss_path VARCHAR PRIMARY KEY, yellow INTEGER, red INTEGER, dark_red INTEGER)`
 	insertTrafficSQL = `INSERT OR REPLACE INTO traffic(ss_path, yellow, red, dark_red) VALUES(?, ?, ?, ?)`
-	recentTrafficSQL = `SELECT * FROM traffic WHERE ts > ? ORDER BY ts ASC`
+	recentTrafficSQL = `SELECT * FROM traffic WHERE ts > ? ORDER BY ts ASC LIMIT 100`
 )
 
 var (
