@@ -23,19 +23,11 @@ var (
 	yellowValueInMask  = uint8(100)
 	redValueInMask     = uint8(178)
 	darkRedValueInMask = uint8(255)
-
-	insertTrafficSQL = `INSERT OR REPLACE INTO traffic(ss_path, yellow, red, dark_red) VALUES(?, ?, ?, ?)`
 )
 
-func analyzeScreenshots(prefix string) error {
+func analyzeScreenshots(prefix string, db *sql.DB) error {
 	log.Printf("---- analyzing screenshots for Jaipur at %v ----", prefix)
 	defer log.Println("---- screenshots analyzed ----")
-
-	db, err := sql.Open("sqlite3", filepath.Join(dbFolder, dbFile))
-	if err != nil {
-		return fmt.Errorf("error in opening db [%v]: %w", dbFile, err)
-	}
-	defer db.Close()
 
 	if err := filepath.WalkDir(ssFolder, func(ssPath string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -171,9 +163,4 @@ func computeTraffic(img *image.Gray) (int, int, int) {
 		}
 	}
 	return yellowCount, redCount, darkRedCount
-}
-
-func insertTraffic(db *sql.DB, ssPath string, yellow, red, darkRed int) error {
-	_, err := db.Exec(insertTrafficSQL, filepath.Base(ssPath), yellow, red, darkRed)
-	return err
 }

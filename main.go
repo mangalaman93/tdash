@@ -13,55 +13,12 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/mattn/go-sqlite3"
 	"golang.org/x/sys/unix"
 )
 
 const (
-	tmpRodFolder    = "/tmp/rod"
-	dbFile          = "traffic.db"
-	ssTimePeriod    = 10 * time.Minute
-	trafficTableDDL = `CREATE TABLE IF NOT EXISTS traffic(ss_path VARCHAR PRIMARY KEY, yellow INTEGER, red INTEGER, dark_red INTEGER)`
-)
-
-var (
-	migrations = []string{
-		"ALTER TABLE traffic ADD COLUMN ts TEXT;",
-		"ALTER TABLE traffic ADD COLUMN x INTEGER;",
-		"ALTER TABLE traffic ADD COLUMN y INTEGER;",
-		`CREATE TRIGGER trg_parse_ss_path
-			AFTER INSERT ON traffic
-			FOR EACH ROW
-			BEGIN
-				UPDATE traffic
-				SET
-					ts =
-						SUBSTR(NEW.ss_path, 1, 4) || '-' ||
-						SUBSTR(NEW.ss_path, 5, 2) || '-' ||
-						SUBSTR(NEW.ss_path, 7, 2) || ' ' ||
-						SUBSTR(NEW.ss_path, 10, 2) || ':' ||
-						SUBSTR(NEW.ss_path, 12, 2) || ':' ||
-						SUBSTR(NEW.ss_path, 14, 2),
-
-					x = CAST(
-							SUBSTR(
-								NEW.ss_path,
-								INSTR(NEW.ss_path, '-x') + 2,
-								INSTR(NEW.ss_path, '-y') - (INSTR(NEW.ss_path, '-x') + 2)
-							) AS INTEGER
-						),
-
-					y = CAST(
-							SUBSTR(
-								NEW.ss_path,
-								INSTR(NEW.ss_path, '-y') + 2,
-								INSTR(NEW.ss_path, '.png') - (INSTR(NEW.ss_path, '-y') + 2)
-							) AS INTEGER
-						)
-
-				WHERE ss_path = NEW.ss_path;
-			END;`,
-	}
+	tmpRodFolder = "/tmp/rod"
+	ssTimePeriod = 10 * time.Minute
 )
 
 var (
@@ -97,7 +54,13 @@ func main() {
 		panic(err)
 	}
 
-	if err := initDB(); err != nil {
+	db, closeDB, err := openDB()
+	if err != nil {
+		panic(err)
+	}
+	defer closeDB()
+
+	if err := initDB(db); err != nil {
 		panic(err)
 	}
 
@@ -111,12 +74,12 @@ func main() {
 		if err != nil {
 			panic(err)
 		}
-		if err := analyzeScreenshots(prefix); err != nil {
+		if err := analyzeScreenshots(prefix, db); err != nil {
 			panic(err)
 		}
 
 	case *analyzePrefix != "":
-		if err := analyzeScreenshots(*analyzePrefix); err != nil {
+		if err := analyzeScreenshots(*analyzePrefix, db); err != nil {
 			panic(err)
 		}
 
@@ -126,7 +89,7 @@ func main() {
 		}
 
 	default:
-		takePeriodicScreenshots(ctrlC)
+		takePeriodicScreenshots(ctrlC, db)
 	}
 }
 
@@ -159,36 +122,7 @@ func createFolders() error {
 	return nil
 }
 
-func initDB() error {
-	db, err := sql.Open("sqlite3", filepath.Join(dbFolder, dbFile))
-	if err != nil {
-		return fmt.Errorf("error in opening db [%v]: %w", dbFile, err)
-	}
-	defer db.Close()
-
-	if _, err := db.Exec(trafficTableDDL); err != nil {
-		return fmt.Errorf("error in creating table [traffic]: %w", err)
-	}
-
-	if err := migrateDB(db); err != nil {
-		return fmt.Errorf("error in migrating db: %w", err)
-	}
-
-	return nil
-}
-
-func migrateDB(db *sql.DB) error {
-	for _, migration := range migrations {
-		if _, err := db.Exec(migration); err != nil && !strings.Contains(err.Error(), "duplicate") &&
-			!strings.Contains(err.Error(), "already exists") {
-
-			return fmt.Errorf("error in migrating db: %w", err)
-		}
-	}
-	return nil
-}
-
-func takePeriodicScreenshots(ctrlC <-chan os.Signal) {
+func takePeriodicScreenshots(ctrlC <-chan os.Signal, db *sql.DB) {
 	t := time.NewTicker(ssTimePeriod)
 	defer t.Stop()
 	for {
@@ -215,7 +149,7 @@ func takePeriodicScreenshots(ctrlC <-chan os.Signal) {
 				return // because this means ctrl+c is pressed
 			}
 
-			if err := analyzeScreenshots(prefix); err != nil {
+			if err := analyzeScreenshots(prefix, db); err != nil {
 				log.Println(err)
 				continue
 			}
