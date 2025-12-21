@@ -18,7 +18,7 @@ const (
 
 	createTablePGDDL = `CREATE TABLE IF NOT EXISTS traffic(ss_path TEXT PRIMARY KEY,
 		yellow INTEGER, red INTEGER, dark_red INTEGER, ts TIMESTAMP, x INTEGER, y INTEGER);`
-	latestTimestampSQL = `SELECT ts FROM traffic ORDER BY ts DESC LIMIT 1`
+	latestSsPathPGSQL  = `SELECT ss_path FROM traffic ORDER BY ss_path COLLATE "C" DESC LIMIT 1`
 	insertTrafficPGSQL = `INSERT INTO traffic(ss_path, yellow, red, dark_red, ts, x, y) VALUES($1, $2, $3, $4, $5, $6, $7)`
 )
 
@@ -54,16 +54,16 @@ func syncLatestSqliteToPG(pgpool *pgxpool.Pool, db *sql.DB,
 	ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
 	defer cancel()
 
-	var latestTS time.Time
-	if err := pgpool.QueryRow(ctx, latestTimestampSQL).Scan(&latestTS); err != nil {
-		if err == pgx.ErrNoRows {
-			latestTS = time.Time{}
-		} else {
-			return fmt.Errorf("error in getting latest timestamp: %w", err)
-		}
+	var latestSsPathNull sql.NullString
+	if err := pgpool.QueryRow(ctx, latestSsPathPGSQL).Scan(&latestSsPathNull); err != nil && err != pgx.ErrNoRows {
+		return fmt.Errorf("error in getting latest timestamp: %w", err)
+	}
+	var latestSsPath string
+	if latestSsPathNull.Valid {
+		latestSsPath = latestSsPathNull.String
 	}
 
-	rows, err := getRecentTraffic(db, latestTS.Format("2006-01-02 15:04:05"))
+	rows, err := getRecentTraffic(db, latestSsPath)
 	if err != nil {
 		return fmt.Errorf("error in getting recent traffic: %w", err)
 	}
@@ -114,7 +114,7 @@ loop:
 		return fmt.Errorf("error committing pg transaction: %w", err)
 	}
 
-	if rowsCount == 100 {
+	if rowsCount == maxRecentRows {
 		hint <- struct{}{}
 	}
 
