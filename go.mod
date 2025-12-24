@@ -6,8 +6,8 @@ require (
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/luabagg/orcgen/v2 v2.0.2
 	github.com/mattn/go-sqlite3 v1.14.32
-	golang.org/x/image v0.33.0
-	golang.org/x/sync v0.18.0
+	golang.org/x/image v0.34.0
+	golang.org/x/sync v0.19.0
 	golang.org/x/sys v0.32.0
 )
 
@@ -23,5 +23,5 @@ require (
 	github.com/ysmood/leakless v0.9.0 // indirect
 	golang.org/x/crypto v0.37.0 // indirect
 	golang.org/x/net v0.28.0 // indirect
-	golang.org/x/text v0.31.0 // indirect
+	golang.org/x/text v0.32.0 // indirect
 )
