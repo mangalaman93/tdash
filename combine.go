@@ -72,7 +72,11 @@ func readImage(fileName string) (image.Image, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error opening file [%v]: %w", fileName, err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			log.Printf("error in closing file [%v]: %v", fileName, err)
+		}
+	}()
 
 	img, _, err := image.Decode(file)
 	if err != nil {
@@ -87,7 +91,11 @@ func savePNG(path string, img image.Image) error {
 	if err != nil {
 		return fmt.Errorf("error creating file [%v]: %w", path, err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			log.Printf("error in closing file [%v]: %v", path, err)
+		}
+	}()
 
 	enc := png.Encoder{CompressionLevel: png.BestCompression}
 	return enc.Encode(file, img)
@@ -196,7 +204,11 @@ func isolateGridFromCombinedImg(dstFolder, combinedImgPath string, x, y int) err
 	if err != nil {
 		return fmt.Errorf("error creating output file [%v]: %w", outputPath, err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			log.Printf("error in closing file [%v]: %v", outputPath, err)
+		}
+	}()
 
 	enc := png.Encoder{CompressionLevel: png.BestCompression}
 	if err := enc.Encode(file, isolatedImg); err != nil {

@@ -22,23 +22,23 @@ const (
 	insertTrafficPGSQL = `INSERT INTO traffic(ss_path, yellow, red, dark_red, ts, x, y) VALUES($1, $2, $3, $4, $5, $6, $7)`
 )
 
-func periodicSyncToPG(db *sql.DB, hint chan struct{}, quit <-chan os.Signal, wg *sync.WaitGroup) error {
+func periodicSyncToPG(db *sql.DB, hint chan struct{}, quit <-chan os.Signal, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	pgpool, err := pgxpool.New(context.Background(), os.Getenv("POSTGRES_URL"))
 	if err != nil {
-		return fmt.Errorf("error in opening postgres: %w", err)
+		panic(err)
 	}
 
 	if _, err := pgpool.Exec(context.Background(), createTablePGDDL); err != nil {
-		return fmt.Errorf("error in creating table [traffic]: %w", err)
+		panic(err)
 	}
 
 	for {
 		select {
 		case <-quit:
 			log.Println("shutting down PG sync!")
-			return nil
+			return
 
 		case <-hint:
 			if err := syncLatestSqliteToPG(pgpool, db, hint, quit); err != nil {
