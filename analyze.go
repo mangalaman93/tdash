@@ -121,7 +121,11 @@ func saveMaskImage(maskPath string, mask *image.Gray) error {
 	if err != nil {
 		return fmt.Errorf("error in creating mask file [%v]: %w", maskPath, err)
 	}
-	defer outfile.Close()
+	defer func() {
+		if err := outfile.Close(); err != nil {
+			log.Printf("error in closing mask file [%v]: %v", maskPath, err)
+		}
+	}()
 
 	if err = png.Encode(outfile, mask); err != nil {
 		return fmt.Errorf("error in encoding mask [%v]: %w", maskPath, err)
