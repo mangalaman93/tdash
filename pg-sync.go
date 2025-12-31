@@ -24,12 +24,8 @@ const (
 
 var (
 	createIndexesPGDDL = []string{
-		// -- Critical
-		`CREATE INDEX IF NOT EXISTS idx_traffic_xy_ts_desc ON traffic (x, y, ts DESC);`,
-		// Time-range pruning
+		`CREATE INDEX IF NOT EXISTS idx_traffic_xy_ts ON traffic (x, y, ts);`,
 		`CREATE INDEX IF NOT EXISTS idx_traffic_ts ON traffic (ts);`,
-		// Optional (only if history queries dominate)
-		`CREATE INDEX IF NOT EXISTS idx_traffic_xy_ts_only ON traffic (x, y, ts);`,
 	}
 )
 
