@@ -22,6 +22,17 @@ const (
 	insertTrafficPGSQL = `INSERT INTO traffic(ss_path, yellow, red, dark_red, ts, x, y) VALUES($1, $2, $3, $4, $5, $6, $7)`
 )
 
+var (
+	createIndexesPGDDL = []string{
+		// -- Critical
+		`CREATE INDEX IF NOT EXISTS idx_traffic_xy_ts_desc ON traffic (x, y, ts DESC);`,
+		// Time-range pruning
+		`CREATE INDEX IF NOT EXISTS idx_traffic_ts ON traffic (ts);`,
+		// Optional (only if history queries dominate)
+		`CREATE INDEX IF NOT EXISTS idx_traffic_xy_ts_only ON traffic (x, y, ts);`,
+	}
+)
+
 func periodicSyncToPG(db *sql.DB, hint chan struct{}, quit <-chan os.Signal, wg *sync.WaitGroup) {
 	defer wg.Done()
 
@@ -32,6 +43,12 @@ func periodicSyncToPG(db *sql.DB, hint chan struct{}, quit <-chan os.Signal, wg 
 
 	if _, err := pgpool.Exec(context.Background(), createTablePGDDL); err != nil {
 		panic(err)
+	}
+
+	for _, ddl := range createIndexesPGDDL {
+		if _, err := pgpool.Exec(context.Background(), ddl); err != nil {
+			panic(err)
+		}
 	}
 
 	for {
