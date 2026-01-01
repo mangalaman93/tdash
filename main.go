@@ -143,6 +143,7 @@ func takePeriodicScreenshots(db *sql.DB, hint chan struct{}, quit <-chan os.Sign
 
 	t := time.NewTicker(ssTimePeriod)
 	defer t.Stop()
+	skipCount := 0
 	for {
 		select {
 		case <-quit:
@@ -150,10 +151,22 @@ func takePeriodicScreenshots(db *sql.DB, hint chan struct{}, quit <-chan os.Sign
 			return
 
 		case <-t.C:
-			// no screenshot during 23:30 to 6:30 IST, that is 18 to 1 UTC
-			if time.Now().UTC().Hour() >= 18 || time.Now().UTC().Hour() <= 0 {
-				log.Println("skipping screenshot during 23:30 to 6:30 IST")
+			currentHour := time.Now().UTC().Hour()
+			// no screenshot during 2:30 to 6:30 IST, that is 21 to 1 UTC
+			if currentHour >= 21 || currentHour <= 1 {
+				skipCount = 0
+				log.Println("skipping screenshot during 2:30AM to 6:30AM IST")
 				continue
+			}
+			// between 11:30PM to 1:30 AM, take screenshot every half an hour (every 3rd 10min tick)
+			// Note that 1:29AM has currentHour=19 in UTC, 1:30AM has currentHour=20 in UTC.
+			if currentHour == 18 || currentHour == 19 {
+				skipCount++
+				if skipCount%3 != 0 {
+					log.Printf("skipping screenshot between 11:30PM to 1:30AM IST (skipCount: %d)", skipCount)
+					continue
+				}
+				skipCount = 0 // reset after taking a screenshot
 			}
 
 			if err := makeSpaceIfNeeded(); err != nil {
