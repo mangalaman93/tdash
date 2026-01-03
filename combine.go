@@ -20,8 +20,8 @@ import (
 )
 
 const (
-	numRows     = 21 // y
-	numCols     = 15 // x
+	numRows     = 24 // y
+	numCols     = 16 // x
 	imageWidth  = 1280
 	imageHeight = 800
 

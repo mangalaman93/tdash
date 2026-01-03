@@ -28,9 +28,9 @@ const (
 		  |                   |
 	*/
 	jaipurNorthWestLatitude  = 26.99
-	jaipurSouthEastLatitude  = 26.78
+	jaipurSouthEastLatitude  = 26.75
 	jaipurNorthWestLongitude = 75.65
-	jaipurSouthEastLongitude = 75.92
+	jaipurSouthEastLongitude = 75.94
 
 	maxRoutine      = 10
 	metersPerDegree = 111320
@@ -56,34 +56,31 @@ func takeGridScreenshots(quit <-chan os.Signal) (string, error) {
 		}
 	}()
 
-loop:
 	for {
-		for {
-			select {
-			case <-quit:
-				return "", fmt.Errorf("ctrl+c pressed")
-			default:
-			}
+		select {
+		case <-quit:
+			return "", fmt.Errorf("ctrl+c pressed")
+		default:
+		}
 
-			latTemp := lat
-			longTemp := long
-			xTemp := x
-			yTemp := y
-			g.Go(func() error {
-				return takeScreenshot(latTemp, longTemp, xTemp, yTemp, nowStr)
-			})
+		latTemp := lat
+		longTemp := long
+		xTemp := x
+		yTemp := y
+		g.Go(func() error {
+			return takeScreenshot(latTemp, longTemp, xTemp, yTemp, nowStr)
+		})
 
-			x += 1
-			long = addMetersInLongitude(lat, long, ssWidthMeters)
-			if long > jaipurSouthEastLongitude {
-				y += 1
-				x = 0
-				lat = addMetersInLatitude(lat, ssHeightMeters)
-				long = addMetersInLongitude(lat, jaipurNorthWestLongitude, ssWidthMeters/2)
-			}
-			if lat < jaipurSouthEastLatitude {
-				break loop
-			}
+		x += 1
+		long = addMetersInLongitude(lat, long, ssWidthMeters)
+		if long > jaipurSouthEastLongitude {
+			y += 1
+			x = 0
+			lat = addMetersInLatitude(lat, ssHeightMeters)
+			long = addMetersInLongitude(lat, jaipurNorthWestLongitude, ssWidthMeters/2)
+		}
+		if lat < jaipurSouthEastLatitude {
+			break
 		}
 	}
 
