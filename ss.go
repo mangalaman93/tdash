@@ -88,6 +88,11 @@ func takeGridScreenshots(quit <-chan os.Signal) (string, error) {
 }
 
 func takeScreenshot(latitude, longitude float64, x, y int, nowStr string) error {
+	if shouldSkip(x, y) {
+		log.Printf("skipping screenshot for a low frequency cell [y:%v, x:%v]", y, x)
+		return nil
+	}
+
 	mapsURL := fmt.Sprintf(mapsURLForTraffic, latitude, longitude)
 	log.Printf("taking screenshot for [y:%v, x:%v] latitude: %f, longitude: %f at [%v]",
 		y, x, latitude, longitude, mapsURL)
